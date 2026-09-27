@@ -1,0 +1,81 @@
+\\ Section 5, Remark 10: numerical experiment for Case (III) of the
+\\ endpoint-extension theorem.
+\\ Both p1 and p2 range over primes not exceeding B.
+
+\\ Test whether 2 is a quartic residue modulo p.
+\\ This is intended for primes p == 1 mod 8.
+is_quartic_residue_2(p) =
+{
+    return(Mod(2, p)^((p - 1)/4) == Mod(1, p));
+}
+
+is_caseIII_base_condition(p1, p2) =
+{
+    return(
+        p1 % 8 == 3 &&
+        p2 % 8 == 1 &&
+        kronecker(p1, p2) == -1
+    );
+}
+
+is_caseIII_order_condition(p1, p2) =
+{
+    return(
+        znorder(Mod(2, p1)) == p1 - 1 &&
+        znorder(Mod(2, p2)) == (p2 - 1)/2 &&
+        gcd((p1 - 1)/2, p2 - 1) == 1
+    );
+}
+
+count_CaseIII_pairs(B) =
+{
+    my(size_first = 0);
+    my(size_second = 0);
+    my(size_nonquartic = 0);
+    my(ratio_second_in_first, ratio_second_in_nonquartic);
+
+    forprime(p1 = 2, B,
+        forprime(p2 = 2, B,
+
+            if(is_caseIII_base_condition(p1, p2),
+
+                size_first++;
+
+                if(is_caseIII_order_condition(p1, p2),
+                    size_second++;
+                );
+
+                if(!is_quartic_residue_2(p2),
+                    size_nonquartic++;
+                );
+            );
+        );
+    );
+
+    print("Upper bound B = ", B);
+    print("Size of the Case (III) base set = ", size_first);
+    print("Size satisfying the Case (III) order and gcd conditions = ", size_second);
+    print("Size satisfying the non-quartic-residue condition = ", size_nonquartic);
+
+    if(size_first == 0,
+        print("Ratio of the order-condition set in the base set = undefined");
+    ,
+        ratio_second_in_first = size_second * 1.0 / size_first;
+        printf("Ratio of the order-condition set in the base set = %.10f\n", ratio_second_in_first);
+    );
+
+    if(size_nonquartic == 0,
+        print("Ratio of the order-condition set in the non-quartic set = undefined");
+    ,
+        ratio_second_in_nonquartic = size_second * 1.0 / size_nonquartic;
+        printf("Ratio of the order-condition set in the non-quartic set = %.10f\n", ratio_second_in_nonquartic);
+    );
+
+    return([
+        size_first,
+        size_second,
+        size_nonquartic,
+        if(size_first == 0, "undefined", ratio_second_in_first),
+        if(size_nonquartic == 0, "undefined", ratio_second_in_nonquartic)
+    ]);
+}

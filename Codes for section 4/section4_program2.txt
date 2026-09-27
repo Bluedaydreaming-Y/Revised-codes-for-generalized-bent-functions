@@ -1,0 +1,151 @@
+\\ Section 4 checks for the norm-equation classification and Appendix B
+\\ The class-group computation is certified by bnfcertify.
+
+CHECK_DECOMPOSITION_FIELD_CLASS_GROUP = 1;
+
+print_section(s) = {
+  print();
+  print(s);
+}
+
+is_zero_vector(vec) = {
+  for(i = 1, #vec,
+    if(vec[i] != 0, return(0));
+  );
+  return(1);
+}
+
+is_divisible_by_integer(nf, aa, m) = {
+  my(c = nfalgtobasis(nf, aa));
+  return(is_zero_vector(c % m));
+}
+
+nonzero_positions_mod(vec, m) = {
+  my(pos = List());
+  for(i = 1, #vec,
+    if(vec[i] % m != 0, listput(pos, i));
+  );
+  return(Vec(pos));
+}
+
+is_principal_by_bnf(bnf, I) = {
+  my(data = bnfisprincipal(bnf, I));
+  return(is_zero_vector(data[1]));
+}
+
+ideal_class_order_by_search(bnf, P, bound) = {
+  for(k = 1, bound,
+    if(is_principal_by_bnf(bnf, idealpow(bnf, P, k)), return(k));
+  );
+  return(0);
+}
+
+zeta126_power(t) = (-z63)^t;
+
+{
+  print_section("Setup K = Q(zeta_21) and recover gamma");
+
+  f21 = subst(polcyclo(21), x, y);
+  K = bnfinit(f21, 1);
+  z21 = Mod(y, f21);
+  conj21 = y^20;
+
+  primes_above_7 = idealprimedec(K, 7);
+
+  [gamma_class, gamma_basis] = bnfisprincipal(K, primes_above_7[1]);
+  gamma_elt = nfbasistoalg(K, gamma_basis);
+  gamma_elt_bar = nfgaloisapply(K, conj21, gamma_elt);
+
+  u = nfeltdiv(K, 7, nfeltpow(K, nfeltmul(K, gamma_elt, gamma_elt_bar), 6));
+
+  square_candidate = nfeltmul(K, u, -y);
+
+  if(!nfeltissquare(K, square_candidate, &v_basis),
+    error("Could not find v with v^2 = -zeta_21*u");
+  );
+
+  v = nfbasistoalg(K, v_basis);
+  v_bar = nfgaloisapply(K, conj21, v);
+
+  print("gamma = ", lift(gamma_elt));
+  print("Check v*conj(v) = u: ", nfeltmul(K, v, v_bar) == u);
+
+  if(CHECK_DECOMPOSITION_FIELD_CLASS_GROUP,
+    print_section("Class-group check for the decomposition field D of 2 in E = Q(zeta_63)");
+
+    H = 2;
+    Dpol = galoissubcyclo(63, H);
+    D = bnfinit(Dpol, 1);
+
+    print("Defining polynomial for D: ", Dpol);
+    print("Class group cyclic factors of D: ", D.clgp.cyc);
+    print("Class number of D: ", D.clgp.no);
+    print("bnfcertify(D) = ", bnfcertify(D));
+
+    dec2D = idealprimedec(D, 2);
+    print("Number of prime ideals above 2 in D: ", #dec2D);
+
+    for(ii = 1, #dec2D,
+      ord_i = ideal_class_order_by_search(D, dec2D[ii], 50);
+      print("Order in Cl(D) of prime above 2 number ", ii, ": ", ord_i);
+    );
+
+    print("Expected: Cl(D) is cyclic of order 21, and every prime above 2 has order 21.");
+  );
+
+  print_section("Appendix B: exact divisibility checks in E = Q(zeta_63)");
+
+  f63 = polcyclo(63);
+  E = nfinit(f63);
+  z63 = Mod(x, f63);
+
+  gamma63_elt = Mod(subst(lift(gamma_elt), y, x^3), f63);
+  gamma63_elt_bar = nfgaloisapply(E, x^62, gamma63_elt);
+
+  print("Embedded gamma in E: ", lift(gamma63_elt));
+  print("conj(gamma) in E: ", lift(gamma63_elt_bar));
+
+  all_t = List();
+
+  for(tt = 0, 125,
+    aa = gamma63_elt + gamma63_elt_bar * zeta126_power(tt);
+    if(is_divisible_by_integer(E, aa, 2), listput(all_t, tt));
+  );
+
+  print("Residues t with 2 | gamma + conj(gamma)*zeta_126^t: ", Vec(all_t));
+  print("Expected: []");
+
+  /*
+    In the proof of the exponent-reduction lemma, after reducing to l = 1,
+    it suffices to check
+
+        t = 5, 47, 89.
+
+    The remaining companion values are t + 63 = 68, 110, 26 modulo 126.
+    These only replace zeta_126^t by -zeta_126^t, so they correspond to
+    changing the sign of the second term. They therefore need not be listed
+    separately in the appendix table.
+  */
+
+  exceptional_t = [5, 47, 89];
+
+  print("Values t checked for the appendix table: ", exceptional_t);
+  print("The corresponding t + 63 values are redundant: ",
+        vector(#exceptional_t, kk, (exceptional_t[kk] + 63) % 126));
+
+  for(kk = 1, #exceptional_t,
+    tt = exceptional_t[kk];
+    aa = gamma63_elt + gamma63_elt_bar * zeta126_power(tt);
+    c = nfalgtobasis(E, aa);
+
+    print("t = ", tt,
+          ": divisible by 2? ", is_zero_vector(c % 2),
+          "; nonzero coordinate positions mod 2 = ", nonzero_positions_mod(c, 2));
+  );
+
+  for(kk = 1, #exceptional_t,
+    tt = exceptional_t[kk];
+    print("basis vector for gamma + conj(gamma)*zeta_126^", tt, ": ",
+          nfalgtobasis(E, gamma63_elt + gamma63_elt_bar * zeta126_power(tt)));
+  );
+}

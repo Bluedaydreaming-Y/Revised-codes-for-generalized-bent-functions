@@ -1,0 +1,35 @@
+\\ Section 5, Remark 10: numerical experiment for Case (I) of the
+\\ endpoint-extension theorem.
+\\ Both p1 and p2 range over primes not exceeding B.
+count_CaseI_pairs(B) =
+{
+  my(count_cond1 = 0, count_cond12 = 0);
+  my(N, ratio);
+
+  forprime(p1 = 2, B,
+    if (p1 % 8 == 3,
+      forprime(p2 = 2, B,
+        if (p2 % 8 == 5,
+          if (kronecker(p1, p2) == -1,
+            count_cond1++;
+
+            N = p1 * p2;
+
+            if (znorder(Mod(2, N)) == eulerphi(N) / 2,
+              count_cond12++;
+            );
+          );
+        );
+      );
+    );
+  );
+
+  print("Size of the Case (I) base set = ", count_cond1);
+  print("Size satisfying the Case (I) maximal-order condition = ", count_cond12);
+
+  if (count_cond1 > 0,
+    ratio = count_cond12 / count_cond1;
+    print("Ratio of the maximal-order set in the base set = ", ratio + 0.0),
+    print("Ratio undefined: the Case (I) base set is empty.")
+  );
+};

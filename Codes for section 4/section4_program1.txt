@@ -1,0 +1,117 @@
+\\ Section 4 checks in K = Q(zeta_21)
+\\ The bnfisprincipal call below recovers a convenient candidate gamma.
+\\ The paper explains how the identities involving this candidate are verified exactly.
+
+print_section(s) = {
+  print();
+  print(s);
+}
+
+is_zero_vector(vec) = {
+  for(i = 1, #vec,
+    if(vec[i] != 0, return(0));
+  );
+  return(1);
+}
+
+basis_coordinates(nf, aa) = nfalgtobasis(nf, aa);
+
+is_divisible_by_integer(nf, aa, m) = {
+  my(c = basis_coordinates(nf, aa));
+  return(is_zero_vector(c % m));
+}
+
+nonzero_positions_mod(vec, m) = {
+  my(pos = List());
+  for(i = 1, #vec,
+    if(vec[i] % m != 0, listput(pos, i));
+  );
+  return(Vec(pos));
+}
+
+print_integrality_mod(nf, label, aa, m) = {
+  my(c = basis_coordinates(nf, aa));
+  print(label, " divisible by ", m, "? ", is_zero_vector(c % m));
+  print(label, " nonzero coordinate positions mod ", m, ": ", nonzero_positions_mod(c, m));
+}
+
+zeta42_power(j) = (-z21)^j;
+
+{
+  print_section("Setup K = Q(zeta_21)");
+
+  f21 = subst(polcyclo(21), x, y);
+  K = bnfinit(f21, 1);
+  z21 = Mod(y, f21);
+  conj21 = y^20;
+
+  print("Defining polynomial f21 = ", f21);
+
+  print_section("Recover gamma above 7 and compute the unit v");
+
+  primes_above_7 = idealprimedec(K, 7);
+  print("Number of prime ideals above 7 in K: ", #primes_above_7);
+
+  [gamma_class, gamma_basis] = bnfisprincipal(K, primes_above_7[1]);
+  gamma_elt = nfbasistoalg(K, gamma_basis);
+  gamma_elt_bar = nfgaloisapply(K, conj21, gamma_elt);
+
+  print("gamma = ", lift(gamma_elt));
+  print("conj(gamma) = ", lift(gamma_elt_bar));
+
+  u = nfeltdiv(K, 7, nfeltpow(K, nfeltmul(K, gamma_elt, gamma_elt_bar), 6));
+  print("u = 7/(gamma*conj(gamma))^6 = ", lift(u));
+  print("u is fixed by conjugation? ", nfgaloisapply(K, conj21, u) == u);
+
+  square_candidate = nfeltmul(K, u, -y);
+
+  if(!nfeltissquare(K, square_candidate, &v_basis),
+    error("Could not find v with v^2 = -zeta_21*u");
+  );
+
+  v = nfbasistoalg(K, v_basis);
+  v_bar = nfgaloisapply(K, conj21, v);
+
+  print("v = ", lift(v));
+  print("Check v*conj(v) = u: ", nfeltmul(K, v, v_bar) == u);
+
+  print_section("Computational fact: pairs (l,j) with 2 | gamma^l + conj(gamma)^l*zeta_42^j");
+
+  pairs_full = List();
+  pairs_reduced = List();
+
+  for(l = 1, 6,
+    for(jj = 0, 41,
+      check = gamma_elt^l + gamma_elt_bar^l * zeta42_power(jj);
+      if(is_divisible_by_integer(K, check, 2),
+        listput(pairs_full, [l, jj]);
+        if(jj <= 20, listput(pairs_reduced, [l, jj]));
+      );
+    );
+  );
+
+  print("Pairs with 0 <= j <= 41: ", Vec(pairs_full));
+  print("Reduced pairs with 0 <= j <= 20: ", Vec(pairs_reduced));
+  print("Expected reduced list for the computational fact: [[3, 5], [6, 10]]");
+
+  print_section("Compute xi_1, xi_1^2, and the congruences used in the quotient argument");
+
+  xi1 = gamma_elt^(-3) * gamma_elt_bar^3 * zeta42_power(5);
+  xi1_sq = xi1^2;
+
+  xi1_sum = xi1 + 1/xi1;
+  xi1_sq_sum = xi1_sq + 1/xi1_sq;
+
+  xi1_sum_conj = nfgaloisapply(K, conj21, xi1_sum);
+  xi1_sq_sum_conj = nfgaloisapply(K, conj21, xi1_sq_sum);
+
+  print("xi_1 = ", lift(xi1));
+  print("xi_1^2 = ", lift(xi1_sq));
+  print("conj(xi_1 + xi_1^(-1)) = ", lift(xi1_sum_conj));
+  print("conj(xi_1^2 + xi_1^(-2)) = ", lift(xi1_sq_sum_conj));
+  print("constant term of conj(xi_1 + xi_1^(-1)) = ", polcoeff(lift(xi1_sum_conj), 0));
+  print("constant term of conj(xi_1^2 + xi_1^(-2)) = ", polcoeff(lift(xi1_sq_sum_conj), 0));
+
+  print_integrality_mod(K, "7*(xi_1 + xi_1^(-1)) - 2", 7*xi1_sum - 2, 4);
+  print_integrality_mod(K, "7*(xi_1^2 + xi_1^(-2)) - 2", 7*xi1_sq_sum - 2, 4);
+}

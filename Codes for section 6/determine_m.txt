@@ -1,0 +1,447 @@
+/*
+  Section 6 benchmark computation for Case (III).
+
+  This program determines the quartic-field PIP threshold m in O_T.  It
+  calls bnfcertify and stops if certification fails.  Consequently, every
+  threshold reported by a completed run is unconditional (independent of
+  GRH), as stated in Section 6 of the current manuscript.
+
+  The same integer m is characterized by the Diophantine equations used in
+  Theorem 2 of Feng--Liu.
+
+  Setting:
+
+      p1 == 3 mod 8,
+      p2 == 1 mod 8,
+      kronecker(p1,p2) = -1,
+      N = p1 * p2.
+
+  Additional order condition on p2:
+
+      valuation(ord_p2(2), 2) = valuation(p2 - 1, 2) - 1.
+
+  Equivalently, since p2 == 1 mod 8, 2 is a quadratic residue but not
+  a quartic residue modulo p2.
+
+  T is the quartic subfield contained in the decomposition field D of 2
+  in K = Q(zeta_N).
+
+  We determine the smallest positive odd m such that there exists a
+  principal ideal I of O_T satisfying
+
+      I * conjugate(I) = 2^m O_T.
+
+  This should agree with the Diophantine threshold recorded in Section 6.
+*/
+
+
+/* ===== Input ===== */
+
+p1 = 67;
+p2 = 97;
+
+max_m = 101;
+
+default(realprecision, 100);
+
+
+/* ===== Utility functions ===== */
+
+is_zero_vector(vv) =
+{
+  for(i = 1, #vv,
+    if(vv[i] != 0,
+      return(0);
+    );
+  );
+
+  return(1);
+}
+
+
+change_variable(pol, newvar) =
+{
+  return(subst(pol, variable(pol), newvar));
+}
+
+
+/*
+  Find the quartic subfield T contained in the decomposition field D.
+
+  The decomposition field D is fixed by <2>. Therefore a subfield of D
+  is obtained by adding further generators to the fixed subgroup.
+*/
+
+find_quartic_subfield_pol(N) =
+{
+  my(fD = galoissubcyclo(N, 2));
+
+  if(poldegree(fD) == 4,
+    return(fD);
+  );
+
+  my(fT);
+
+  for(a = 2, N - 1,
+    if(gcd(a, N) == 1,
+      fT = galoissubcyclo(N, [2, a]);
+
+      if(poldegree(fT) == 4,
+        return(fT);
+      );
+    );
+  );
+
+  error("Could not find a quartic subfield contained in the decomposition field of 2");
+}
+
+
+/* ===== Automorphism helpers ===== */
+
+eval_aut_at_complex_root(aut, nf, gamma) =
+{
+  my(v = variable(nf.pol));
+  subst(lift(aut), v, gamma);
+}
+
+
+choose_nonreal_root(nf) =
+{
+  my(rr = nf.roots);
+
+  for(i = 1, #rr,
+    if(abs(imag(rr[i])) > 10^(-30),
+      return(rr[i]);
+    );
+  );
+
+  error("No numerically nonreal root found. Increase realprecision or check the field.");
+}
+
+
+find_complex_conjugation_from_auts(nf, auts) =
+{
+  my(gamma = choose_nonreal_root(nf));
+  my(target = conj(gamma));
+  my(best = 1);
+  my(besterr = abs(eval_aut_at_complex_root(auts[1], nf, gamma) - target));
+  my(val, err);
+
+  for(i = 2, #auts,
+    val = eval_aut_at_complex_root(auts[i], nf, gamma);
+    err = abs(val - target);
+
+    if(err < besterr,
+      besterr = err;
+      best = i;
+    );
+  );
+
+  if(besterr > 10^(-40), error("Numerical identification of complex conjugation failed; increase realprecision or check the field."));
+
+  return(auts[best]);
+}
+
+
+find_image_prime_index(nf, dec, aut, i) =
+{
+  my(img = nfgaloisapply(nf, aut, dec[i]));
+
+  for(j = 1, #dec,
+    if(idealval(nf, img, dec[j]) == 1,
+      return(j);
+    );
+  );
+
+  error("Could not identify image of prime ideal under automorphism");
+}
+
+
+/* ===== Choose one representative from each conjugate pair ===== */
+
+choose_representatives_from_pairs() =
+{
+  my(rep = List());
+  my(marked = vector(#dec, i, 0));
+
+  for(i = 1, #dec,
+    if(marked[i] == 0,
+      listput(rep, i);
+      marked[i] = 1;
+      marked[tau_partner[i]] = 1;
+    );
+  );
+
+  return(Vec(rep));
+}
+
+
+/* ===== Principalness test ===== */
+
+is_principal_ideal_in_T(I) =
+{
+  my(v = bnfisprincipal(Tbnf, I, 0));
+  return(is_zero_vector(Vec(v)));
+}
+
+
+/*
+  Build the full exponent vector for a candidate I.
+
+  If reps[j] has exponent a_j, then its conjugate partner has exponent
+  m - a_j. This guarantees I * conjugate(I) = 2^m O_T.
+*/
+
+full_vector_from_rep_exponents(m, rep_exp) =
+{
+  my(full_vec = vector(#dec, i, 0));
+  my(idx, cidx);
+
+  for(j = 1, #representative_set,
+    idx = representative_set[j];
+    cidx = tau_partner[idx];
+
+    full_vec[idx] = rep_exp[j];
+    full_vec[cidx] = m - rep_exp[j];
+  );
+
+  return(full_vec);
+}
+
+
+/*
+  Recursive search over all exponent choices
+
+      0 <= a_j <= m
+
+  on representatives of the conjugate pairs.
+*/
+
+search_rep_exponents_recursive(m, pos, rep_exp) =
+{
+  if(pos > #representative_set,
+    my(full_vec = full_vector_from_rep_exponents(m, rep_exp));
+    my(I = idealfactorback(Tbnf, dec, full_vec));
+
+    if(is_principal_ideal_in_T(I),
+      return([full_vec, I]);
+    );
+
+    return([]);
+  );
+
+  for(a = 0, m,
+    rep_exp[pos] = a;
+
+    my(ans = search_rep_exponents_recursive(m, pos + 1, rep_exp));
+
+    if(#ans > 0,
+      return(ans);
+    );
+  );
+
+  return([]);
+}
+
+
+find_principal_solution_for_m(m) =
+{
+  my(rep_exp = vector(#representative_set, i, 0));
+  return(search_rep_exponents_recursive(m, 1, rep_exp));
+}
+
+
+/* ===== Optional: collect all ideal exponent-vector solutions for a fixed m ===== */
+
+collect_rep_exponents_recursive(m, pos, rep_exp, S) =
+{
+  if(pos > #representative_set,
+    my(full_vec = full_vector_from_rep_exponents(m, rep_exp));
+    my(I = idealfactorback(Tbnf, dec, full_vec));
+
+    if(is_principal_ideal_in_T(I),
+      listput(S, full_vec);
+    );
+
+    return();
+  );
+
+  for(a = 0, m,
+    rep_exp[pos] = a;
+    collect_rep_exponents_recursive(m, pos + 1, rep_exp, S);
+  );
+}
+
+
+all_principal_solutions_for_m(m) =
+{
+  my(S = List());
+  my(rep_exp = vector(#representative_set, i, 0));
+
+  collect_rep_exponents_recursive(m, 1, rep_exp, S);
+
+  return(Set(Vec(S)));
+}
+
+
+/* ===== Main computation ===== */
+
+initialize_T() =
+{
+  if(!isprime(p1), error("p1 must be prime"));
+  if(!isprime(p2), error("p2 must be prime"));
+  if(p1 == p2, error("p1 and p2 must be distinct"));
+
+  if(p1 % 8 != 3, error("p1 must be congruent to 3 modulo 8"));
+  if(p2 % 8 != 1, error("p2 must be congruent to 1 modulo 8"));
+
+  if(kronecker(p1, p2) != -1, error("kronecker(p1,p2) must be -1"));
+
+  if(max_m < 1, error("max_m must be positive"));
+
+  /*
+    Check the p2 order / non-quartic-residue condition.
+
+    Since p2 == 1 mod 8, write
+
+        p2 - 1 = 2^lambda_p2 * odd.
+
+    The required condition is
+
+        valuation(ord_p2(2), 2) = lambda_p2 - 1.
+
+    Equivalently, 2 is a quadratic residue but not a quartic residue
+    modulo p2.
+  */
+
+  lambda_p2 = valuation(p2 - 1, 2);
+  f2_order = znorder(Mod(2, p2));
+  v2_f2 = valuation(f2_order, 2);
+
+  if(lambda_p2 < 3, error("lambda_p2 must be at least 3 because p2 should be congruent to 1 modulo 8"));
+  if(v2_f2 != lambda_p2 - 1, error("The required p2 order condition fails: valuation(ord_p2(2),2) must equal valuation(p2-1,2)-1"));
+
+  N = p1 * p2;
+
+  f_N = znorder(Mod(2, N));
+  phi_N = eulerphi(N);
+
+  if(phi_N % f_N != 0, error("Unexpected: ord_N(2) does not divide phi(N)"));
+
+  print("N = ", N);
+  print("ord_N(2) = ", f_N);
+  print("phi(N) = ", phi_N);
+  print("phi(N)/ord_N(2) = ", phi_N / f_N);
+  print("lambda_p2 = ", lambda_p2);
+  print("ord_p2(2) = ", f2_order);
+  print("valuation(ord_p2(2),2) = ", v2_f2);
+
+  fT0 = find_quartic_subfield_pol(N);
+  fT0 = change_variable(fT0, x);
+
+  print("Defining polynomial of T:");
+  print(fT0);
+
+  Tnf = nfinit(fT0);
+
+  if(poldegree(Tnf.pol) != 4, error("The constructed field T is not quartic"));
+
+  Tbnf = bnfinit(Tnf);
+
+  /*
+    Certification step.
+
+    If bnfcertify(Tbnf) returns 1, then the class group and unit data
+    in Tbnf are certified. Hence the subsequent bnfisprincipal
+    computations in this quartic field do not rely on GRH.
+
+    If certification fails, we stop instead of continuing with a
+    GRH-conditional PIP search.
+  */
+
+  Tbnf_certified = bnfcertify(Tbnf);
+  print("bnfcertify(Tbnf) = ", Tbnf_certified);
+
+  if(!Tbnf_certified, error("bnfcertify(Tbnf) failed; the following PIP search would remain GRH-conditional."));
+
+  dec = idealprimedec(Tbnf, 2);
+
+  print("Number of prime ideals above 2 in T = ", #dec);
+
+  if(#dec != 4, error("2 does not split completely into four prime ideals in T; check the hypotheses."));
+
+  G = galoisinit(Tnf);
+  auts = Vec(galoispermtopol(G, G.group));
+
+  print("Number of automorphisms of T = ", #auts);
+
+  if(#auts != 4, error("T does not appear to be a cyclic quartic Galois field."));
+
+  tau = find_complex_conjugation_from_auts(Tnf, auts);
+
+  tau_partner = vector(#dec, i, 0);
+
+  for(i = 1, #dec,
+    tau_partner[i] = find_image_prime_index(Tnf, dec, tau, i);
+  );
+
+  for(i = 1, #dec,
+    if(tau_partner[i] == i,
+      error("A prime above 2 is fixed by complex conjugation; pairing strategy invalid.");
+    );
+
+    if(tau_partner[tau_partner[i]] != i,
+      error("Complex conjugation pairing is not involutive.");
+    );
+  );
+
+  representative_set = choose_representatives_from_pairs();
+
+  if(#representative_set != 2, error("The number of conjugate pairs above 2 in T is not 2."));
+
+  print("tau_partner = ", tau_partner);
+  print("representative_set = ", representative_set);
+  print("class_group_cyc(T) = ", Tbnf.cyc);
+}
+
+
+determine_m_by_PIP() =
+{
+  initialize_T();
+
+  forstep(m = 1, max_m, 2,
+    print("Checking m = ", m, " ...");
+
+    my(ans = find_principal_solution_for_m(m));
+
+    if(#ans > 0,
+      print("Found m = ", m);
+      print("One exponent vector for I = ", ans[1]);
+      print("This means I * conjugate(I) = 2^", m, " O_T and I is principal.");
+
+      return([m, ans[1]]);
+    );
+  );
+
+  print("No such principal ideal was found for odd m <= ", max_m);
+  return([]);
+}
+
+
+/* ===== Run ===== */
+
+print_final_result(result) =
+{
+  if(#result == 0,
+    print("Final result: no m found in the search range.");
+    return();
+  );
+
+  print("Final result:");
+  print("m = ", result[1]);
+  print("one ideal exponent vector = ", result[2]);
+}
+
+
+result = determine_m_by_PIP();
+print_final_result(result);

@@ -52,6 +52,9 @@ endpoint-extension theorem.
 ## Requirements and basic usage
 
 A recent version of [PARI/GP](https://pari.math.u-bordeaux.fr/) is required.
+PARI/GP 2.19.0 or later is recommended.
+The certified computations reported in the manuscript were
+re-verified with PARI/GP 2.19.0.
 After downloading and extracting an archive, start GP in the corresponding
 directory and load a program with `\r`. For example,
 
